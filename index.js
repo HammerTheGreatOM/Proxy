@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const https = require('https');
 const http = require('http');
+const path = require('path');
 const { URL } = require('url');
 
 const app = express();
@@ -12,6 +13,8 @@ const app = express();
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || 'changeme';
 // ════════════════════════════════════════════════════════════
 
+// Serve Proxy.html at the root URL
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(cors());
 app.use(express.json());
 app.set('trust proxy', true);
@@ -98,22 +101,37 @@ function rewriteHtml(html, baseUrl, serverUrl, password) {
 
   // Inject base tag and proxy script at top of head
   const injectedScript = `
+<base href="${baseUrl}">
 <script>
 (function() {
-  // Intercept link clicks to route through proxy
+  const PROXY = ${JSON.stringify(serverUrl + '/proxy?password=' + encodeURIComponent(password) + '&url=')};
+
+  function proxyNav(url) {
+    if (!url) return;
+    try {
+      // Make absolute
+      const abs = new URL(url, window.location.href).href;
+      if (abs.startsWith('http://') || abs.startsWith('https://')) {
+        window.parent.postMessage({ type: 'proxy_navigate', url: abs }, '*');
+      }
+    } catch(e) {}
+  }
+
+  // Intercept all clicks via event delegation — catches dynamically added links too
   document.addEventListener('click', function(e) {
-    const a = e.target.closest('a');
-    if (!a || !a.href) return;
+    const a = e.target.closest('a[href]');
+    if (!a) return;
     const href = a.getAttribute('href');
-    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
     e.preventDefault();
-    const msg = { type: 'proxy_navigate', url: a.href };
-    window.parent.postMessage(msg, '*');
+    e.stopPropagation();
+    proxyNav(a.href || href);
   }, true);
 
   // Intercept form submissions
   document.addEventListener('submit', function(e) {
     e.preventDefault();
+    e.stopPropagation();
     const form = e.target;
     const method = (form.method || 'get').toLowerCase();
     let action = form.action || window.location.href;
@@ -121,8 +139,24 @@ function rewriteHtml(html, baseUrl, serverUrl, password) {
       const params = new URLSearchParams(new FormData(form)).toString();
       action = action.split('?')[0] + (params ? '?' + params : '');
     }
-    window.parent.postMessage({ type: 'proxy_navigate', url: action }, '*');
+    proxyNav(action);
   }, true);
+
+  // Override window.location changes
+  const origPushState = history.pushState.bind(history);
+  const origReplaceState = history.replaceState.bind(history);
+  history.pushState = function(state, title, url) {
+    origPushState(state, title, url);
+    if (url) proxyNav(url);
+  };
+  history.replaceState = function(state, title, url) {
+    origReplaceState(state, title, url);
+    if (url) proxyNav(url);
+  };
+
+  window.addEventListener('popstate', function() {
+    proxyNav(window.location.href);
+  });
 })();
 <\/script>`;
 
@@ -183,6 +217,7 @@ app.get('/proxy', checkAuth, async (req, res) => {
       const rewritten = rewriteHtml(result.body, result.finalUrl, serverUrl, PROXY_PASSWORD);
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
       res.send(rewritten);
     } else if (contentType.includes('text/css') || contentType.includes('javascript') || contentType.includes('text/plain')) {
       res.setHeader('Content-Type', contentType);
