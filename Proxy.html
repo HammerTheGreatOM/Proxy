@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROXY</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0c0c10; --surface:#13131a; --surface2:#1a1a24;
+  --border:#252530; --border2:#32324a;
+  --accent:#7c6dfa; --green:#4dfa9a; --yellow:#fac84d;
+  --text:#e0dff0; --muted:#5a5a78; --danger:#fa4d6d;
+  --mono:'IBM Plex Mono',monospace; --sans:'Space Grotesk',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");pointer-events:none;z-index:9999;opacity:0.4;}
+
+/* Auth */
+#auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:900;}
+#auth-card{background:var(--surface);border:1px solid var(--border2);padding:36px 40px;width:100%;max-width:360px;}
+#auth-logo{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:10px;}
+#auth-logo::before{content:'◈';animation:pulse 2.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(.85);}}
+#auth-sub{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;margin-bottom:28px;}
+#auth-pass{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:14px;padding:10px 12px;outline:none;margin-bottom:12px;}
+#auth-pass:focus{border-color:var(--accent);}
+#auth-btn{width:100%;background:var(--accent);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:10px;cursor:pointer;}
+#auth-btn:hover{filter:brightness(1.15);}
+#auth-error{font-family:var(--mono);font-size:11px;color:var(--danger);margin-top:10px;min-height:16px;}
+
+/* Topbar */
+#topbar{display:flex;align-items:center;gap:8px;padding:0 14px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;z-index:100;}
+#logo{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:8px;flex-shrink:0;}
+#logo::before{content:'◈';font-size:16px;animation:pulse 2.5s ease-in-out infinite;}
+
+/* Nav buttons */
+.nav-btn{background:none;border:1px solid var(--border2);color:var(--muted);font-family:var(--mono);font-size:13px;width:32px;height:32px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+.nav-btn:disabled{opacity:.3;cursor:not-allowed;}
+
+/* Address bar */
+#addr-wrap{flex:1;display:flex;align-items:center;background:var(--surface2);border:1px solid var(--border2);transition:border-color .15s;min-width:0;}
+#addr-wrap:focus-within{border-color:var(--accent);}
+#addr-scheme{font-family:var(--mono);font-size:11px;color:var(--muted);padding:0 8px;flex-shrink:0;}
+#addr-bar{flex:1;background:none;border:none;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 4px;outline:none;min-width:0;}
+#addr-bar::placeholder{color:var(--muted);}
+#go-btn{background:var(--accent);border:none;color:#fff;font-family:var(--mono);font-size:11px;font-weight:600;padding:0 14px;height:100%;cursor:pointer;flex-shrink:0;text-transform:uppercase;letter-spacing:.05em;}
+#go-btn:hover{filter:brightness(1.15);}
+
+/* Status indicators */
+#status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+#status-dot.loading{background:var(--yellow);box-shadow:0 0 8px var(--yellow);animation:blink .8s ease-in-out infinite;}
+#status-dot.ok{background:var(--green);box-shadow:0 0 8px var(--green);}
+#status-dot.err{background:var(--danger);box-shadow:0 0 8px var(--danger);}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+.tb-btn{background:none;border:1px solid var(--border2);color:var(--muted);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;transition:all .15s;text-transform:uppercase;flex-shrink:0;}
+.tb-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* Main area */
+#main{display:flex;flex:1;overflow:hidden;}
+
+/* Sidebar */
+#sidebar{width:240px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .2s;}
+#sidebar.collapsed{width:0;}
+#sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+#sidebar-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.stab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--mono);font-size:10px;padding:8px 4px;cursor:pointer;transition:all .15s;text-transform:uppercase;}
+.stab.active{color:var(--accent);border-bottom-color:var(--accent);}
+#sidebar-content{flex:1;overflow-y:auto;}
+#sidebar-content::-webkit-scrollbar{width:3px;}
+#sidebar-content::-webkit-scrollbar-thumb{background:var(--border2);}
+
+.side-item{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s;border-left:2px solid transparent;}
+.side-item:hover{background:var(--surface2);}
+.side-item.active{background:rgba(124,109,250,.08);border-left-color:var(--accent);}
+.side-item-icon{font-size:11px;flex-shrink:0;width:14px;text-align:center;}
+.side-item-text{flex:1;min-width:0;}
+.side-item-title{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.side-item-url{font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.side-item-del{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;flex-shrink:0;padding:2px 4px;opacity:0;}
+.side-item:hover .side-item-del{opacity:1;}
+.side-item-del:hover{color:var(--danger);}
+.empty-side{padding:20px 12px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);line-height:2;}
+
+/* Proxy frame area */
+#frame-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;}
+#home-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--muted);}
+#home-logo{font-family:var(--mono);font-size:32px;font-weight:600;color:var(--accent);letter-spacing:.15em;display:flex;align-items:center;gap:12px;}
+#home-logo::before{content:'◈';animation:pulse 2.5s ease-in-out infinite;}
+#home-sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;}
+#quick-links{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:480px;margin-top:8px;}
+.quick-link{background:var(--surface);border:1px solid var(--border2);padding:8px 14px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--muted);transition:all .15s;}
+.quick-link:hover{border-color:var(--accent);color:var(--accent);}
+
+#loading-bar{position:absolute;top:0;left:0;height:2px;background:var(--accent);width:0%;transition:width .3s;z-index:10;box-shadow:0 0 8px var(--accent);}
+#error-screen{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted);}
+#error-screen .err-icon{font-size:40px;}
+#error-screen .err-title{font-family:var(--mono);font-size:14px;color:var(--danger);letter-spacing:.1em;}
+#error-screen .err-msg{font-family:var(--mono);font-size:11px;text-align:center;max-width:360px;line-height:1.8;}
+
+#proxy-frame{flex:1;border:none;width:100%;height:100%;background:#fff;}
+
+/* Add bookmark modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(8,8,14,.85);z-index:500;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.modal-bg.open{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border2);padding:26px 30px;width:380px;position:relative;animation:modalIn .2s ease;}
+@keyframes modalIn{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
+.modal h2{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);margin-bottom:16px;}
+.modal-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:5px;}
+.field input{width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;}
+.field input:focus{border-color:var(--accent);}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
+.modal-btn{background:var(--accent);border:none;color:#fff;font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;padding:8px 18px;cursor:pointer;}
+.modal-btn:hover{filter:brightness(1.15);}
+.modal-btn.secondary{background:none;border:1px solid var(--border2);color:var(--muted);}
+.modal-btn.secondary:hover{border-color:var(--text);color:var(--text);filter:none;}
+</style>
+</head>
+<body>
+
+<!-- Auth -->
+<div id="auth-screen">
+  <div id="auth-card">
+    <div id="auth-logo">PROXY</div>
+    <div id="auth-sub">// enter password to continue</div>
+    <input type="password" id="auth-pass" placeholder="Password" autocomplete="current-password"/>
+    <button id="auth-btn" onclick="doAuth()">Enter →</button>
+    <div id="auth-error"></div>
+  </div>
+</div>
+
+<!-- Topbar -->
+<div id="topbar">
+  <div id="logo">PROXY</div>
+  <button class="nav-btn" id="btn-back" onclick="goBack()" disabled title="Back">←</button>
+  <button class="nav-btn" id="btn-fwd" onclick="goForward()" disabled title="Forward">→</button>
+  <button class="nav-btn" onclick="reloadPage()" title="Reload">↺</button>
+  <div id="addr-wrap">
+    <span id="addr-scheme">https://</span>
+    <input id="addr-bar" placeholder="Enter a URL or search..." onkeydown="onAddrKey(event)" oninput="onAddrInput(this.value)"/>
+    <button id="go-btn" onclick="navigate()">Go</button>
+  </div>
+  <div id="status-dot"></div>
+  <button class="tb-btn" onclick="addBookmark()" title="Bookmark">★ Save</button>
+  <button class="tb-btn" onclick="toggleSidebar()">☰</button>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted)">Panel</span>
+    </div>
+    <div id="sidebar-tabs">
+      <button class="stab active" id="stab-bm" onclick="switchTab('bookmarks')">★ Saved</button>
+      <button class="stab" id="stab-hist" onclick="switchTab('history')">⏱ History</button>
+    </div>
+    <div id="sidebar-content"></div>
+  </div>
+
+  <div id="frame-area">
+    <div id="loading-bar"></div>
+
+    <div id="home-screen">
+      <div id="home-logo">PROXY</div>
+      <div id="home-sub">// type a url or search above to begin</div>
+      <div id="quick-links">
+        <div class="quick-link" onclick="loadUrl('https://www.google.com')">Google</div>
+        <div class="quick-link" onclick="loadUrl('https://www.wikipedia.org')">Wikipedia</div>
+        <div class="quick-link" onclick="loadUrl('https://www.reddit.com')">Reddit</div>
+        <div class="quick-link" onclick="loadUrl('https://news.ycombinator.com')">Hacker News</div>
+        <div class="quick-link" onclick="loadUrl('https://www.github.com')">GitHub</div>
+        <div class="quick-link" onclick="loadUrl('https://www.coolmathgames.com')">Cool Math Games</div>
+      </div>
+    </div>
+
+    <div id="error-screen">
+      <div class="err-icon">⚠</div>
+      <div class="err-title">Cannot load page</div>
+      <div class="err-msg" id="err-msg-text"></div>
+    </div>
+
+    <iframe id="proxy-frame" style="display:none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+  </div>
+</div>
+
+<!-- Add bookmark modal -->
+<div class="modal-bg" id="bm-modal">
+  <div class="modal">
+    <h2>Save Bookmark</h2>
+    <button class="modal-close" onclick="closeModal('bm-modal')">×</button>
+    <div class="field"><label>Name</label><input id="bm-name" placeholder="My bookmark"/></div>
+    <div class="field"><label>URL</label><input id="bm-url" placeholder="https://..."/></div>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" onclick="closeModal('bm-modal')">Cancel</button>
+      <button class="modal-btn" onclick="saveBookmark()">Save →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  ★ CONFIG
+// ═══════════════════════════════════════════════
+const SERVER = 'https://proxy-2xuc.onrender.com'; // ← change this
+const PROXY_PASSWORD = '582001'; // ← change this (client-side check only)
+// ═══════════════════════════════════════════════
+
+let currentUrl = '';
+let navHistory = [];
+let navIndex = -1;
+let sidebarTab = 'bookmarks';
+let sidebarOpen = true;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+function doAuth() {
+  const pw = document.getElementById('auth-pass').value;
+  if (pw === PROXY_PASSWORD) {
+    document.getElementById('auth-screen').style.display = 'none';
+    renderSidebar();
+  } else {
+    document.getElementById('auth-error').textContent = 'Wrong password';
+  }
+}
+document.getElementById('auth-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function onAddrKey(e) { if (e.key === 'Enter') navigate(); }
+
+function onAddrInput(val) {
+  const scheme = document.getElementById('addr-scheme');
+  if (val.startsWith('http://')) { scheme.textContent = 'http://'; }
+  else { scheme.textContent = 'https://'; }
+}
+
+function navigate() {
+  let val = document.getElementById('addr-bar').value.trim();
+  if (!val) return;
+  // If it looks like a search query, go to Google
+  if (!val.includes('.') || val.includes(' ')) {
+    val = 'https://www.google.com/search?q=' + encodeURIComponent(val);
+  } else if (!val.startsWith('http://') && !val.startsWith('https://')) {
+    val = 'https://' + val;
+  }
+  loadUrl(val);
+}
+
+function loadUrl(url) {
+  currentUrl = url;
+  document.getElementById('addr-bar').value = url.replace(/^https?:\/\//, '');
+  onAddrInput(url);
+
+  // Add to nav history
+  navHistory = navHistory.slice(0, navIndex + 1);
+  navHistory.push(url);
+  navIndex = navHistory.length - 1;
+  updateNavBtns();
+
+  // Add to history
+  addToHistory(url);
+
+  fetchPage(url);
+}
+
+function goBack() {
+  if (navIndex > 0) { navIndex--; fetchPage(navHistory[navIndex]); updateNavBtns(); updateAddrBar(navHistory[navIndex]); }
+}
+function goForward() {
+  if (navIndex < navHistory.length - 1) { navIndex++; fetchPage(navHistory[navIndex]); updateNavBtns(); updateAddrBar(navHistory[navIndex]); }
+}
+function reloadPage() { if (currentUrl) fetchPage(currentUrl); }
+
+function updateNavBtns() {
+  document.getElementById('btn-back').disabled = navIndex <= 0;
+  document.getElementById('btn-fwd').disabled = navIndex >= navHistory.length - 1;
+}
+function updateAddrBar(url) {
+  document.getElementById('addr-bar').value = url.replace(/^https?:\/\//, '');
+  onAddrInput(url);
+}
+
+async function fetchPage(url) {
+  setStatus('loading');
+  document.getElementById('home-screen').style.display = 'none';
+  document.getElementById('error-screen').style.display = 'none';
+  document.getElementById('proxy-frame').style.display = 'none';
+  animateLoadingBar();
+
+  try {
+    const r = await fetch(`${SERVER}/proxy?url=${encodeURIComponent(url)}`, {
+      headers: { 'x-proxy-password': PROXY_PASSWORD }
+    });
+
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      showError(data.error || `Server returned ${r.status}`);
+      return;
+    }
+
+    const html = await r.text();
+    const frame = document.getElementById('proxy-frame');
+    frame.style.display = 'block';
+    frame.srcdoc = html;
+    setStatus('ok');
+    finishLoadingBar();
+  } catch(e) {
+    showError('Could not reach the proxy server. Make sure it is running.');
+  }
+}
+
+function showError(msg) {
+  document.getElementById('err-msg-text').textContent = msg;
+  document.getElementById('error-screen').style.display = 'flex';
+  setStatus('err');
+  finishLoadingBar();
+}
+
+// ── Loading bar ───────────────────────────────────────────────────────────────
+let loadingInterval;
+function animateLoadingBar() {
+  const bar = document.getElementById('loading-bar');
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  setTimeout(() => {
+    bar.style.transition = 'width 2s ease';
+    bar.style.width = '80%';
+  }, 10);
+}
+function finishLoadingBar() {
+  const bar = document.getElementById('loading-bar');
+  bar.style.transition = 'width .2s ease';
+  bar.style.width = '100%';
+  setTimeout(() => { bar.style.width = '0%'; }, 300);
+}
+
+// ── Status dot ────────────────────────────────────────────────────────────────
+function setStatus(state) {
+  document.getElementById('status-dot').className = state;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+}
+
+function switchTab(tab) {
+  sidebarTab = tab;
+  document.getElementById('stab-bm').classList.toggle('active', tab === 'bookmarks');
+  document.getElementById('stab-hist').classList.toggle('active', tab === 'history');
+  renderSidebar();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('sidebar-content');
+  if (sidebarTab === 'bookmarks') {
+    const bms = getBookmarks();
+    if (!bms.length) { el.innerHTML = '<div class="empty-side">No bookmarks yet.<br>Browse somewhere and<br>click ★ Save to add one.</div>'; return; }
+    el.innerHTML = bms.map((b, i) => `
+      <div class="side-item" onclick="loadUrl('${escAttr(b.url)}')">
+        <div class="side-item-icon">★</div>
+        <div class="side-item-text">
+          <div class="side-item-title">${esc(b.name)}</div>
+          <div class="side-item-url">${esc(b.url)}</div>
+        </div>
+        <button class="side-item-del" onclick="event.stopPropagation();deleteBookmark(${i})">✕</button>
+      </div>`).join('');
+  } else {
+    const hist = getHistory();
+    if (!hist.length) { el.innerHTML = '<div class="empty-side">No history yet.</div>'; return; }
+    el.innerHTML = hist.map((h, i) => `
+      <div class="side-item" onclick="loadUrl('${escAttr(h.url)}')">
+        <div class="side-item-icon">⏱</div>
+        <div class="side-item-text">
+          <div class="side-item-title">${esc(h.url.replace(/^https?:\/\//, '').slice(0, 40))}</div>
+          <div class="side-item-url">${esc(h.time)}</div>
+        </div>
+        <button class="side-item-del" onclick="event.stopPropagation();deleteHistory(${i})">✕</button>
+      </div>`).join('');
+  }
+}
+
+// ── Bookmarks ─────────────────────────────────────────────────────────────────
+function getBookmarks() { try { return JSON.parse(localStorage.getItem('proxy_bookmarks') || '[]'); } catch { return []; } }
+function saveBookmarks(bms) { localStorage.setItem('proxy_bookmarks', JSON.stringify(bms)); }
+
+function addBookmark() {
+  document.getElementById('bm-name').value = currentUrl ? currentUrl.replace(/^https?:\/\//, '').split('/')[0] : '';
+  document.getElementById('bm-url').value = currentUrl || '';
+  openModal('bm-modal');
+}
+
+function saveBookmark() {
+  const name = document.getElementById('bm-name').value.trim();
+  const url = document.getElementById('bm-url').value.trim();
+  if (!name || !url) return;
+  const bms = getBookmarks();
+  bms.unshift({ name, url });
+  saveBookmarks(bms);
+  closeModal('bm-modal');
+  if (sidebarTab === 'bookmarks') renderSidebar();
+}
+
+function deleteBookmark(i) {
+  const bms = getBookmarks();
+  bms.splice(i, 1);
+  saveBookmarks(bms);
+  renderSidebar();
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+function getHistory() { try { return JSON.parse(localStorage.getItem('proxy_history') || '[]'); } catch { return []; } }
+function saveHistory(h) { localStorage.setItem('proxy_history', JSON.stringify(h)); }
+
+function addToHistory(url) {
+  const hist = getHistory().filter(h => h.url !== url);
+  hist.unshift({ url, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+  saveHistory(hist.slice(0, 50)); // keep last 50
+  if (sidebarTab === 'history') renderSidebar();
+}
+
+function deleteHistory(i) {
+  const hist = getHistory();
+  hist.splice(i, 1);
+  saveHistory(hist);
+  renderSidebar();
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); }));
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s||'').replace(/'/g,"\\'"); }
+</script>
+</body>
+</html>
