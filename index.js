@@ -10,7 +10,7 @@ const app = express();
 // ════════════════════════════════════════════════════════════
 //  ★ EDITABLE CONFIG
 // ════════════════════════════════════════════════════════════
-const PROXY_PASSWORD = process.env.PROXY_PASSWORD || 'changeme';
+const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '582001';
 // ════════════════════════════════════════════════════════════
 
 // Serve Proxy.html at the root URL
